@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deadlock Detection & Recovery Simulator (C, HTML, CSS)</title>
+    <meta name="description" content="Deadlock Detection and Recovery Simulator built with C, HTML, and CSS without external libraries." />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- App Header -->
+    <header class="app-header">
+      <div class="header-top">
+        <div class="brand-section">
+          <div class="brand-icon">C</div>
+          <div>
+            <div class="brand-title">
+              DEADLOCK SIMULATOR
+              <span class="brand-tag">ANSI C · HTML5 · CSS3</span>
+            </div>
+            <div class="brand-desc">
+              Operating Systems Multi-Resource Matrix Reduction & Cycle Detection Engine
+            </div>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <!-- Live Status Indicator -->
+          <div id="status-badge" class="status-badge status-deadlock">
+            <span id="status-text">INITIALIZING...</span>
+          </div>
+
+          <!-- Scenario Presets -->
+          <select id="preset-selector" class="select-dark">
+            <option value="classic">Preset: 4-Way Circular Deadlock</option>
+            <option value="multi-instance-safe">Preset: Multi-Instance Cycle (Safe)</option>
+          </select>
+
+          <!-- Core Action Buttons -->
+          <button id="btn-detect" class="btn btn-cyan" title="Run Deadlock Detection in C">
+            Run C Detection
+          </button>
+          <button id="btn-auto-recover" class="btn btn-rose" title="Auto-abort optimal victim to break deadlock">
+            Auto Recover
+          </button>
+          <button id="btn-reset" class="btn btn-dark" title="Reset system state">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-bar">
+        <div class="nav-container">
+          <div class="tab-group">
+            <button class="tab-btn active" data-tab="tab-graph">Visual Graph (RAG / WFG)</button>
+            <button class="tab-btn" data-tab="tab-matrix">Matrix Editor</button>
+            <button class="tab-btn" data-tab="tab-tracer">Step-by-Step Tracer</button>
+            <button class="tab-btn" data-tab="tab-recovery">Recovery Console</button>
+            <button class="tab-btn" data-tab="tab-c-engine">C Engine & Source</button>
+            <button class="tab-btn" data-tab="tab-theory">OS Theory</button>
+          </div>
+
+          <div id="graph-mode-toggle" class="tab-group" style="margin-left: auto;">
+            <button id="btn-rag-mode" class="tab-btn active" style="padding: 4px 8px; font-size: 11px;">RAG Mode</button>
+            <button id="btn-wfg-mode" class="tab-btn" style="padding: 4px 8px; font-size: 11px;">WFG Mode</button>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Main Content Workspace -->
+    <main class="main-content">
+      <!-- TAB 1: VISUAL GRAPH (RAG & WFG) -->
+      <section id="tab-graph" class="tab-pane active">
+        <div class="svg-canvas-wrapper">
+          <div class="canvas-toolbar">
+            <div id="canvas-mode-title" style="color: var(--cyan); font-weight: bold;">
+              Resource Allocation Graph (RAG)
+            </div>
+            <div style="color: var(--text-muted); font-size: 11px;">
+              Processes (Circles) · Resources (Squares) · Drag nodes to reposition
+            </div>
+          </div>
+          <svg id="graph-svg" width="100%" height="470" viewBox="0 0 900 470">
+            <defs>
+              <marker id="arrow-alloc" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+              </marker>
+              <marker id="arrow-req" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b" />
+              </marker>
+              <marker id="arrow-wfg" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+              </marker>
+              <marker id="arrow-cycle" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#f43f5e" />
+              </marker>
+            </defs>
+            <g id="svg-edges"></g>
+            <g id="svg-nodes"></g>
+          </svg>
+        </div>
+
+        <div class="card" style="margin-top: 16px; padding: 12px 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 12px;">
+            <div>
+              <span style="color: var(--text-muted);">Wait-For Graph Cycles: </span>
+              <span id="wfg-cycle-summary" style="font-weight: bold; color: var(--rose);">Scanning...</span>
+            </div>
+            <div>
+              <span style="color: var(--text-muted);">Safe Sequence: </span>
+              <span id="safe-sequence-summary" style="font-weight: bold; color: var(--cyan);">None</span>
+            </div>
+            <div>
+              <span style="color: var(--text-muted);">Deadlocked Processes: </span>
+              <span id="deadlocked-processes-summary" style="font-weight: bold; color: var(--rose);">None</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: MATRIX EDITOR -->
+      <section id="tab-matrix" class="tab-pane">
+        <div class="grid-3">
+          <!-- Available Vector Card -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--emerald);">Available Vector (A)</span>
+              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">Unallocated units</span>
+            </div>
+            <div id="available-vector-container" style="display: flex; gap: 8px; justify-content: center;"></div>
+          </div>
+
+          <!-- Total Capacity Card -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--cyan);">Total Resources</span>
+              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">Physical units</span>
+            </div>
+            <div id="capacity-vector-container" style="display: flex; gap: 8px; justify-content: center;"></div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--amber);">Matrix Actions</span>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: center;">
+              <button id="btn-add-process" class="btn btn-dark">+ Add Process</button>
+              <button id="btn-add-resource" class="btn btn-dark">+ Add Resource</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Allocation Matrix -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--emerald);">Allocation Matrix (Held)</span>
+              <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">Allocated to Pi</span>
+            </div>
+            <div style="overflow-x: auto;">
+              <table id="alloc-matrix-table" class="data-table"></table>
+            </div>
+          </div>
+
+          <!-- Request Matrix -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--amber);">Request Matrix (Needed)</span>
+              <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">Requested by Pi</span>
+            </div>
+            <div style="overflow-x: auto;">
+              <table id="req-matrix-table" class="data-table"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: STEP-BY-STEP TRACER -->
+      <section id="tab-tracer" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title" style="color: var(--cyan);">C Matrix Reduction Algorithm Tracer</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-tracer-prev" class="btn btn-dark">Prev Step</button>
+              <span id="tracer-step-indicator" style="font-family: var(--font-mono); font-size: 12px; color: var(--cyan); font-weight: bold;">Step 0</span>
+              <button id="btn-tracer-next" class="btn btn-cyan">Next Step</button>
+            </div>
+          </div>
+
+          <div style="padding: 12px; background-color: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px;">
+            <div id="tracer-step-title" style="font-weight: bold; font-size: 14px; color: var(--text-main); margin-bottom: 6px;"></div>
+            <div id="tracer-step-desc" style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted);"></div>
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); margin-bottom: 6px;">
+                Work Vector at this step:
+              </div>
+              <div id="tracer-work-vector" style="display: flex; gap: 8px;"></div>
+            </div>
+            <div>
+              <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); margin-bottom: 6px;">
+                Safe Execution Sequence so far:
+              </div>
+              <div id="tracer-sequence" style="font-family: var(--font-mono); font-size: 13px; color: var(--emerald); font-weight: bold; padding: 6px 0;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: RECOVERY CONSOLE -->
+      <section id="tab-recovery" class="tab-pane">
+        <div class="grid-2">
+          <!-- Process Termination Card -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--rose);">Strategy 1: Process Termination</span>
+              <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">Kill & Reclaim</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+              Terminate processes one-by-one according to minimum cost or lowest priority until the circular wait is broken.
+            </p>
+            <div id="recovery-process-roster" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          </div>
+
+          <!-- Resource Preemption Card -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--cyan);">Strategy 2: Resource Preemption</span>
+              <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">Checkpoint Rollback</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+              Preempt a resource instance from a victim and allocate to a blocked process. Victim is rolled back to checkpoint.
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+              <div>
+                <label style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); display: block; margin-bottom: 4px;">Victim Process:</label>
+                <select id="preempt-victim-select" class="select-dark" style="width: 100%;"></select>
+              </div>
+              <div>
+                <label style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); display: block; margin-bottom: 4px;">Recipient Process:</label>
+                <select id="preempt-recip-select" class="select-dark" style="width: 100%;"></select>
+              </div>
+            </div>
+            <button id="btn-execute-preemption" class="btn btn-cyan" style="width: 100%;">
+              Execute Preemption & Rollback
+            </button>
+          </div>
+        </div>
+
+        <!-- Recovery Audit Log -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Recovery Audit Log</span>
+          </div>
+          <div id="recovery-log-list" style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); max-height: 200px; overflow-y: auto;">
+            <div style="padding: 8px 0; color: var(--text-dim); text-align: center;">No recovery operations executed yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: C ENGINE & SOURCE -->
+      <section id="tab-c-engine" class="tab-pane">
+        <div class="grid-2">
+          <!-- Virtual stdout Terminal -->
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span>./deadlock_sim (Live C Execution Terminal)</span>
+              <button id="btn-recompile-c" class="btn btn-emerald" style="padding: 2px 8px; font-size: 11px;">
+                Recompile with GCC
+              </button>
+            </div>
+            <div id="terminal-stdout" class="terminal-body">
+              <div class="terminal-prompt">$ gcc -O2 -Wall src/deadlock.c -o deadlock_sim</div>
+              <div class="terminal-prompt">$ ./deadlock_sim</div>
+              <div style="color: #6ee7b7;">[C-KERNEL] Loading deadlock detection routines...</div>
+            </div>
+          </div>
+
+          <!-- C Source Code Viewer -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <span class="card-title" style="color: var(--emerald);">src/deadlock.c (ANSI C Source)</span>
+              <button id="btn-copy-c-code" class="btn btn-dark" style="padding: 2px 8px; font-size: 11px;">
+                Copy C Code
+              </button>
+            </div>
+            <pre id="c-code-display" class="code-pre">/* Loading C source code... */</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 6: OS THEORY -->
+      <section id="tab-theory" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title" style="color: var(--amber);">Coffman's 4 Necessary Conditions</span>
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">E. G. Coffman (1971)</span>
+          </div>
+          <div class="grid-4">
+            <div class="card" style="margin-bottom: 0; background: var(--bg-dark);">
+              <div style="font-weight: bold; font-family: var(--font-mono); font-size: 12px; color: var(--amber); margin-bottom: 6px;">1. Mutual Exclusion</div>
+              <p style="font-size: 11px; color: var(--text-muted);">At least one resource must be non-shareable; only one process can hold it at any given moment.</p>
+            </div>
+            <div class="card" style="margin-bottom: 0; background: var(--bg-dark);">
+              <div style="font-weight: bold; font-family: var(--font-mono); font-size: 12px; color: var(--amber); margin-bottom: 6px;">2. Hold and Wait</div>
+              <p style="font-size: 11px; color: var(--text-muted);">A process must hold at least one resource while waiting to acquire additional resources held by others.</p>
+            </div>
+            <div class="card" style="margin-bottom: 0; background: var(--bg-dark);">
+              <div style="font-weight: bold; font-family: var(--font-mono); font-size: 12px; color: var(--amber); margin-bottom: 6px;">3. No Preemption</div>
+              <p style="font-size: 11px; color: var(--text-muted);">Resources cannot be forcibly seized; they can only be released voluntarily after the process finishes.</p>
+            </div>
+            <div class="card" style="margin-bottom: 0; background: var(--bg-dark);">
+              <div style="font-weight: bold; font-family: var(--font-mono); font-size: 12px; color: var(--rose); margin-bottom: 6px;">4. Circular Wait</div>
+              <p style="font-size: 11px; color: var(--text-muted);">A closed chain of processes exists: P0 waits for P1, P1 waits for P2, and Pn waits for P0.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Single vs Multiple Instance Graph Theorems</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+              <strong style="color: var(--cyan);">Theorem 1:</strong> If every resource has only 1 instance, a cycle in the Resource Allocation Graph (or Wait-For Graph) is <strong style="color: var(--rose);">necessary AND sufficient</strong> for deadlock.<br/><br/>
+              <strong style="color: var(--amber);">Theorem 2:</strong> If resources have multiple instances, a cycle is <strong style="color: var(--amber);">necessary but NOT sufficient</strong>! Use our Preset "Multi-Instance Cycle (Safe)" to observe a cycle where no deadlock exists.
+            </p>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Recovery Trade-offs</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+              <strong style="color: var(--rose);">Process Termination:</strong> Aborting all deadlocked processes has high cost. Aborting one-by-one by minimum cost minimizes wasted CPU cycles.<br/><br/>
+              <strong style="color: var(--emerald);">Resource Preemption:</strong> Requires state checkpoints. Starvation must be prevented by keeping an aging counter so the same victim is not repeatedly selected.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      Deadlock Detection & Recovery Engine · Built with ANSI C, HTML5, and CSS3 · Zero External Libraries
+    </footer>
+
+    <!-- Native Browser Controller (Pure Standard JavaScript, No Libraries) -->
+    <script>
+      let currentSimData = null;
+      let currentTracerStep = 0;
+      let graphMode = 'RAG';
+      let currentPreset = 'classic';
+      let recoveryLogs = [];
+
+      // DOM Elements
+      const statusBadge = document.getElementById('status-badge');
+      const statusText = document.getElementById('status-text');
+      const presetSelector = document.getElementById('preset-selector');
+      const btnDetect = document.getElementById('btn-detect');
+      const btnAutoRecover = document.getElementById('btn-auto-recover');
+      const btnReset = document.getElementById('btn-reset');
+
+      const tabButtons = document.querySelectorAll('.tab-btn[data-tab]');
+      const tabPanes = document.querySelectorAll('.tab-pane');
+
+      const btnRagMode = document.getElementById('btn-rag-mode');
+      const btnWfgMode = document.getElementById('btn-wfg-mode');
+      const canvasModeTitle = document.getElementById('canvas-mode-title');
+      const svgEdges = document.getElementById('svg-edges');
+      const svgNodes = document.getElementById('svg-nodes');
+
+      const wfgCycleSummary = document.getElementById('wfg-cycle-summary');
+      const safeSequenceSummary = document.getElementById('safe-sequence-summary');
+      const deadlockedProcessesSummary = document.getElementById('deadlocked-processes-summary');
+
+      const availableContainer = document.getElementById('available-vector-container');
+      const capacityContainer = document.getElementById('capacity-vector-container');
+      const allocTable = document.getElementById('alloc-matrix-table');
+      const reqTable = document.getElementById('req-matrix-table');
+
+      const tracerStepIndicator = document.getElementById('tracer-step-indicator');
+      const tracerStepTitle = document.getElementById('tracer-step-title');
+      const tracerStepDesc = document.getElementById('tracer-step-desc');
+      const tracerWorkVector = document.getElementById('tracer-work-vector');
+      const tracerSequence = document.getElementById('tracer-sequence');
+      const btnTracerPrev = document.getElementById('btn-tracer-prev');
+      const btnTracerNext = document.getElementById('btn-tracer-next');
+
+      const recoveryProcessRoster = document.getElementById('recovery-process-roster');
+      const preemptVictimSelect = document.getElementById('preempt-victim-select');
+      const preemptRecipSelect = document.getElementById('preempt-recip-select');
+      const btnExecutePreemption = document.getElementById('btn-execute-preemption');
+      const recoveryLogList = document.getElementById('recovery-log-list');
+
+      const terminalStdout = document.getElementById('terminal-stdout');
+      const cCodeDisplay = document.getElementById('c-code-display');
+      const btnCopyCCode = document.getElementById('btn-copy-c-code');
+      const btnRecompileC = document.getElementById('btn-recompile-c');
+
+      // Tab Switching
+      tabButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const targetTab = btn.getAttribute('data-tab');
+          if (!targetTab) return;
+          tabButtons.forEach((b) => b.classList.remove('active'));
+          tabPanes.forEach((p) => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(targetTab)?.classList.add('active');
+        });
+      });
+
+      // Graph Mode Toggle
+      btnRagMode.addEventListener('click', () => {
+        graphMode = 'RAG';
+        btnRagMode.classList.add('active');
+        btnWfgMode.classList.remove('active');
+        canvasModeTitle.innerText = 'Resource Allocation Graph (RAG)';
+        renderGraph();
+      });
+
+      btnWfgMode.addEventListener('click', () => {
+        graphMode = 'WFG';
+        btnWfgMode.classList.add('active');
+        btnRagMode.classList.remove('active');
+        canvasModeTitle.innerText = 'Wait-For Graph (WFG) with Cycle Detection';
+        renderGraph();
+      });
+
+      // Fetch Simulation from C Backend
+      async function runSimulation(query = '') {
+        try {
+          let url = '/api/c-engine' + (query ? (query.startsWith('?') ? query : '?' + query) : '');
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('C Engine responded with error');
+          const data = await res.json();
+          currentSimData = data;
+          currentTracerStep = 0;
+
+          logToTerminal('[C-KERNEL] Invoked ./deadlock_sim ' + query);
+          logToTerminal(
+            '[C-DETECTION] Result: ' + (data.is_deadlocked ? 'DEADLOCK CONFIRMED' : 'SAFE STATE')
+          );
+
+          renderAll();
+        } catch (err) {
+          logToTerminal('[C-ERROR] ' + err.message, true);
+        }
+      }
+
+      function logToTerminal(msg, isAlert = false) {
+        const line = document.createElement('div');
+        line.className = isAlert ? 'terminal-alert' : '';
+        line.innerText = msg;
+        terminalStdout.appendChild(line);
+        terminalStdout.scrollTop = terminalStdout.scrollHeight;
+      }
+
+      // Render Master UI
+      function renderAll() {
+        if (!currentSimData) return;
+        renderStatus();
+        renderGraph();
+        renderMatrices();
+        renderTracer();
+        renderRecovery();
+      }
+
+      function renderStatus() {
+        if (!currentSimData) return;
+        const isDl = currentSimData.is_deadlocked;
+        statusBadge.className = 'status-badge ' + (isDl ? 'status-deadlock' : 'status-safe');
+        statusText.innerText = isDl
+          ? 'DEADLOCK DETECTED (' + currentSimData.deadlocked_ids.length + ' BLOCKED)'
+          : 'SYSTEM SAFE / NO DEADLOCK';
+
+        wfgCycleSummary.innerText =
+          currentSimData.cycles.length > 0
+            ? currentSimData.cycles.length + ' Cycle(s) Detected'
+            : 'None (Acyclic)';
+        wfgCycleSummary.style.color = currentSimData.cycles.length > 0 ? 'var(--rose)' : 'var(--emerald)';
+
+        safeSequenceSummary.innerText =
+          currentSimData.safe_sequence.length > 0
+            ? currentSimData.safe_sequence.map((id) => 'P' + id).join(' → ')
+            : 'None';
+
+        deadlockedProcessesSummary.innerText =
+          currentSimData.deadlocked_ids.length > 0
+            ? currentSimData.deadlocked_ids.map((id) => 'P' + id).join(', ')
+            : 'None';
+      }
+
+      // Render SVG Graph (RAG & WFG)
+      function renderGraph() {
+        if (!currentSimData) return;
+        svgEdges.innerHTML = '';
+        svgNodes.innerHTML = '';
+
+        const { processes, resources, allocation, request, deadlocked_ids, cycles } = currentSimData;
+
+        if (graphMode === 'RAG') {
+          // 1. Allocation Edges: Resource -> Process (Solid Green)
+          resources.forEach((res, rIdx) => {
+            processes.forEach((proc, pIdx) => {
+              const count = allocation[pIdx]?.[rIdx] || 0;
+              if (count > 0 && !proc.terminated) {
+                const isDl = deadlocked_ids.includes(proc.id);
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', String(res.x));
+                line.setAttribute('y1', String(res.y));
+                line.setAttribute('x2', String(proc.x));
+                line.setAttribute('y2', String(proc.y));
+                line.setAttribute('stroke', isDl ? '#f43f5e' : '#10b981');
+                line.setAttribute('stroke-width', '2.5');
+                line.setAttribute('marker-end', 'url(#arrow-alloc)');
+                svgEdges.appendChild(line);
+
+                const midX = (res.x + proc.x) / 2;
+                const midY = (res.y + proc.y) / 2;
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', String(midX));
+                text.setAttribute('y', String(midY - 4));
+                text.setAttribute('fill', '#10b981');
+                text.setAttribute('font-size', '10');
+                text.setAttribute('font-family', 'monospace');
+                text.setAttribute('text-anchor', 'middle');
+                text.textContent = String(count);
+                svgEdges.appendChild(text);
+              }
+            });
+          });
+
+          // 2. Request Edges: Process -> Resource (Dashed Amber)
+          processes.forEach((proc, pIdx) => {
+            resources.forEach((res, rIdx) => {
+              const count = request[pIdx]?.[rIdx] || 0;
+              if (count > 0 && !proc.terminated) {
+                const isDl = deadlocked_ids.includes(proc.id);
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', String(proc.x));
+                line.setAttribute('y1', String(proc.y));
+                line.setAttribute('x2', String(res.x));
+                line.setAttribute('y2', String(res.y));
+                line.setAttribute('stroke', isDl ? '#f43f5e' : '#f59e0b');
+                line.setAttribute('stroke-width', '2');
+                line.setAttribute('stroke-dasharray', '5 3');
+                line.setAttribute('marker-end', 'url(#arrow-req)');
+                svgEdges.appendChild(line);
+
+                const midX = (proc.x + res.x) / 2;
+                const midY = (proc.y + res.y) / 2;
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', String(midX));
+                text.setAttribute('y', String(midY - 4));
+                text.setAttribute('fill', '#f59e0b');
+                text.setAttribute('font-size', '10');
+                text.setAttribute('font-family', 'monospace');
+                text.setAttribute('text-anchor', 'middle');
+                text.textContent = String(count);
+                svgEdges.appendChild(text);
+              }
+            });
+          });
+
+          // 3. Resource Nodes (Squares)
+          resources.forEach((res, rIdx) => {
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${res.x - 45}, ${res.y - 30})`);
+            g.style.cursor = 'move';
+
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('width', '90');
+            rect.setAttribute('height', '60');
+            rect.setAttribute('rx', '8');
+            rect.setAttribute('fill', '#0f172a');
+            rect.setAttribute('stroke', '#334155');
+            rect.setAttribute('stroke-width', '1.5');
+            g.appendChild(rect);
+
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            title.setAttribute('x', '45');
+            title.setAttribute('y', '18');
+            title.setAttribute('text-anchor', 'middle');
+            title.setAttribute('fill', '#ffffff');
+            title.setAttribute('font-size', '11');
+            title.setAttribute('font-weight', 'bold');
+            title.setAttribute('font-family', 'monospace');
+            title.textContent = res.name;
+            g.appendChild(title);
+
+            const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            sub.setAttribute('x', '45');
+            sub.setAttribute('y', '36');
+            sub.setAttribute('text-anchor', 'middle');
+            sub.setAttribute('fill', '#94a3b8');
+            sub.setAttribute('font-size', '9');
+            sub.setAttribute('font-family', 'monospace');
+            sub.textContent = 'Avail: ' + (currentSimData?.available[rIdx] ?? 0) + ' / Tot: ' + res.total;
+            g.appendChild(sub);
+
+            attachDragHandler(g, (newX, newY) => {
+              res.x = newX + 45;
+              res.y = newY + 30;
+              renderGraph();
+            });
+
+            svgNodes.appendChild(g);
+          });
+        } else {
+          // WFG Mode: Process to Process
+          processes.forEach((pFrom, i) => {
+            if (pFrom.terminated) return;
+            resources.forEach((_, rIdx) => {
+              if (request[i]?.[rIdx] > 0) {
+                processes.forEach((pTo, j) => {
+                  if (i !== j && !pTo.terminated && allocation[j]?.[rIdx] > 0) {
+                    const inCycle = cycles.some((c) => {
+                      const idx = c.indexOf(pFrom.id);
+                      return idx !== -1 && c[(idx + 1) % c.length] === pTo.id;
+                    });
+
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', String(pFrom.x));
+                    line.setAttribute('y1', String(pFrom.y));
+                    line.setAttribute('x2', String(pTo.x));
+                    line.setAttribute('y2', String(pTo.y));
+                    line.setAttribute('stroke', inCycle ? '#f43f5e' : '#38bdf8');
+                    line.setAttribute('stroke-width', inCycle ? '3.5' : '2');
+                    line.setAttribute('marker-end', inCycle ? 'url(#arrow-cycle)' : 'url(#arrow-wfg)');
+                    svgEdges.appendChild(line);
+                  }
+                });
+              }
+            });
+          });
+        }
+
+        // Process Nodes (Circles)
+        processes.forEach((proc) => {
+          const isDl = deadlocked_ids.includes(proc.id);
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.setAttribute('transform', `translate(${proc.x}, ${proc.y})`);
+          g.style.cursor = 'move';
+
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', '26');
+          circle.setAttribute('fill', proc.terminated ? '#1e293b' : isDl ? '#4c0519' : '#0f172a');
+          circle.setAttribute('stroke', proc.terminated ? '#475569' : isDl ? '#f43f5e' : '#38bdf8');
+          circle.setAttribute('stroke-width', isDl ? '2.5' : '1.5');
+          g.appendChild(circle);
+
+          const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          name.setAttribute('text-anchor', 'middle');
+          name.setAttribute('y', '-2');
+          name.setAttribute('fill', '#ffffff');
+          name.setAttribute('font-size', '12');
+          name.setAttribute('font-weight', 'bold');
+          name.setAttribute('font-family', 'monospace');
+          name.textContent = proc.name;
+          g.appendChild(name);
+
+          const info = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          info.setAttribute('text-anchor', 'middle');
+          info.setAttribute('y', '12');
+          info.setAttribute('fill', isDl ? '#fda4af' : '#94a3b8');
+          info.setAttribute('font-size', '9');
+          info.setAttribute('font-family', 'monospace');
+          info.textContent = proc.terminated ? 'ABORTED' : isDl ? 'LOCKED' : 'P:' + proc.priority;
+          g.appendChild(info);
+
+          attachDragHandler(g, (newX, newY) => {
+            proc.x = newX;
+            proc.y = newY;
+            renderGraph();
+          });
+
+          svgNodes.appendChild(g);
+        });
+      }
+
+      function attachDragHandler(el, onMove) {
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+
+        el.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          startX = e.clientX;
+          startY = e.clientY;
+          e.stopPropagation();
+
+          const onMouseMove = (ev) => {
+            if (!isDragging) return;
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            startX = ev.clientX;
+            startY = ev.clientY;
+
+            const currentTransform = el.getAttribute('transform');
+            const match = /translate\(([^,]+),\s*([^)]+)\)/.exec(currentTransform || '');
+            const curX = match ? parseFloat(match[1]) : 0;
+            const curY = match ? parseFloat(match[2]) : 0;
+
+            onMove(curX + dx, curY + dy);
+          };
+
+          const onMouseUp = () => {
+            isDragging = false;
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+          };
+
+          window.addEventListener('mousemove', onMouseMove);
+          window.addEventListener('mouseup', onMouseUp);
+        });
+      }
+
+      // Render Matrices
+      function renderMatrices() {
+        if (!currentSimData) return;
+        const { resources, processes, available, allocation, request } = currentSimData;
+
+        // Available Vector
+        availableContainer.innerHTML = '';
+        resources.forEach((r, rIdx) => {
+          const div = document.createElement('div');
+          div.style.textAlign = 'center';
+          div.innerHTML = `
+            <div style="font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); margin-bottom: 2px;">${r.name}</div>
+            <div class="num-cell">${available[rIdx]}</div>
+          `;
+          availableContainer.appendChild(div);
+        });
+
+        // Capacity Vector
+        capacityContainer.innerHTML = '';
+        resources.forEach((r) => {
+          const div = document.createElement('div');
+          div.style.textAlign = 'center';
+          div.innerHTML = `
+            <div style="font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); margin-bottom: 2px;">${r.name}</div>
+            <div class="num-cell" style="color: var(--cyan);">${r.total}</div>
+          `;
+          capacityContainer.appendChild(div);
+        });
+
+        // Allocation Table
+        let allocHtml = '<thead><tr><th>Process</th>' + resources.map((r) => '<th>' + r.name + '</th>').join('') + '</tr></thead><tbody>';
+        processes.forEach((p, pIdx) => {
+          allocHtml += '<tr ' + (p.terminated ? 'style="opacity: 0.4;"' : '') + '>' +
+            '<td style="font-weight: bold; color: var(--text-main);">' + p.name + '</td>' +
+            resources.map((_, rIdx) => '<td><span class="num-cell">' + (allocation[pIdx]?.[rIdx] || 0) + '</span></td>').join('') +
+          '</tr>';
+        });
+        allocHtml += '</tbody>';
+        allocTable.innerHTML = allocHtml;
+
+        // Request Table
+        let reqHtml = '<thead><tr><th>Process</th>' + resources.map((r) => '<th>' + r.name + '</th>').join('') + '</tr></thead><tbody>';
+        processes.forEach((p, pIdx) => {
+          reqHtml += '<tr ' + (p.terminated ? 'style="opacity: 0.4;"' : '') + '>' +
+            '<td style="font-weight: bold; color: var(--text-main);">' + p.name + '</td>' +
+            resources.map((_, rIdx) => '<td><span class="num-cell" style="color: var(--amber);">' + (request[pIdx]?.[rIdx] || 0) + '</span></td>').join('') +
+          '</tr>';
+        });
+        reqHtml += '</tbody>';
+        reqTable.innerHTML = reqHtml;
+      }
+
+      // Render Tracer
+      function renderTracer() {
+        if (!currentSimData || currentSimData.steps.length === 0) {
+          tracerStepIndicator.innerText = 'No steps';
+          tracerStepTitle.innerText = 'Tracer ready';
+          tracerStepDesc.innerText = 'Run detection to generate trace steps.';
+          return;
+        }
+
+        const step = currentSimData.steps[currentTracerStep] || currentSimData.steps[0];
+        tracerStepIndicator.innerText = 'Step ' + (currentTracerStep + 1) + ' of ' + currentSimData.steps.length;
+        tracerStepTitle.innerText = step.title;
+        tracerStepDesc.innerText = step.desc;
+
+        tracerWorkVector.innerHTML = '';
+        currentSimData.resources.forEach((r, idx) => {
+          const box = document.createElement('div');
+          box.style.textAlign = 'center';
+          box.innerHTML = `
+            <div style="font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);">${r.name}</div>
+            <div class="num-cell" style="color: var(--cyan);">${step.work[idx]}</div>
+          `;
+          tracerWorkVector.appendChild(box);
+        });
+
+        tracerSequence.innerText =
+          currentSimData.safe_sequence.length > 0
+            ? currentSimData.safe_sequence.map((id) => 'P' + id).join(' → ')
+            : 'No complete safe sequence';
+      }
+
+      btnTracerPrev.addEventListener('click', () => {
+        if (currentTracerStep > 0) {
+          currentTracerStep--;
+          renderTracer();
+        }
+      });
+
+      btnTracerNext.addEventListener('click', () => {
+        if (currentSimData && currentTracerStep < currentSimData.steps.length - 1) {
+          currentTracerStep++;
+          renderTracer();
+        }
+      });
+
+      // Render Recovery
+      function renderRecovery() {
+        if (!currentSimData) return;
+        const { processes, deadlocked_ids } = currentSimData;
+
+        recoveryProcessRoster.innerHTML = '';
+        preemptVictimSelect.innerHTML = '';
+        preemptRecipSelect.innerHTML = '';
+
+        processes.forEach((p) => {
+          if (p.terminated) return;
+
+          const optV = document.createElement('option');
+          optV.value = String(p.id);
+          optV.text = p.name + ' (Hold: ' + p.preemptions + 'x)';
+          preemptVictimSelect.appendChild(optV);
+
+          const optR = document.createElement('option');
+          optR.value = String(p.id);
+          optR.text = p.name;
+          preemptRecipSelect.appendChild(optR);
+
+          const isDl = deadlocked_ids.includes(p.id);
+          const div = document.createElement('div');
+          div.style.display = 'flex';
+          div.style.justifyContent = 'space-between';
+          div.style.alignItems = 'center';
+          div.style.padding = '8px 12px';
+          div.style.backgroundColor = isDl ? 'var(--rose-bg)' : 'var(--bg-dark)';
+          div.style.border = '1px solid ' + (isDl ? '#be123c' : 'var(--border)');
+          div.style.borderRadius = '6px';
+          div.style.fontFamily = 'var(--font-mono)';
+          div.style.fontSize = '12px';
+
+          div.innerHTML = `
+            <div>
+              <strong style="color: #ffffff;">${p.name}</strong>
+              <span style="color: var(--text-dim); margin-left: 8px;">Cost: ${p.cost} · Priority: P${p.priority}</span>
+              ${isDl ? '<span style="color: #fda4af; font-weight: bold; margin-left: 8px;">[DEADLOCKED]</span>' : ''}
+            </div>
+            <button class="btn btn-rose" style="padding: 2px 8px; font-size: 11px;">Kill Process</button>
+          `;
+
+          div.querySelector('button')?.addEventListener('click', () => {
+            terminateProcess(p.id);
+          });
+
+          recoveryProcessRoster.appendChild(div);
+        });
+      }
+
+      async function terminateProcess(id) {
+        const pName = currentSimData?.processes.find((p) => p.id === id)?.name || ('P' + id);
+        addRecoveryLog('Terminated victim process ' + pName + ' in C engine. Freed resources returned to available.');
+        await runSimulation('terminate=' + id);
+      }
+
+      async function autoRecover() {
+        if (!currentSimData || !currentSimData.is_deadlocked) return;
+        const deadlockedProcs = currentSimData.processes.filter((p) =>
+          currentSimData.deadlocked_ids.includes(p.id)
+        );
+        if (deadlockedProcs.length === 0) return;
+
+        const victim = deadlockedProcs.reduce((min, curr) => (curr.cost < min.cost ? curr : min));
+        await terminateProcess(victim.id);
+      }
+
+      btnAutoRecover.addEventListener('click', autoRecover);
+
+      btnExecutePreemption.addEventListener('click', async () => {
+        const victimId = parseInt(preemptVictimSelect.value);
+        const recipId = parseInt(preemptRecipSelect.value);
+        if (victimId === recipId) {
+          alert('Victim and recipient cannot be the same process.');
+          return;
+        }
+        const resourceId = 0;
+        addRecoveryLog('Preempted 1 unit of resource from P' + victimId + ' -> transferred to P' + recipId + '.');
+        await runSimulation('preempt=' + victimId + ',' + resourceId + ',' + recipId);
+      });
+
+      function addRecoveryLog(msg) {
+        const time = new Date().toLocaleTimeString();
+        recoveryLogs.unshift('[' + time + '] ' + msg);
+        recoveryLogList.innerHTML = recoveryLogs.map((l) => '<div style="padding: 4px 0;">' + l + '</div>').join('');
+      }
+
+      presetSelector.addEventListener('change', () => {
+        currentPreset = presetSelector.value;
+        runSimulation(currentPreset === 'multi-instance-safe' ? 'preset=multi-instance-safe' : '');
+      });
+
+      btnDetect.addEventListener('click', () => {
+        runSimulation();
+      });
+
+      btnReset.addEventListener('click', () => {
+        runSimulation(currentPreset === 'multi-instance-safe' ? 'preset=multi-instance-safe' : '');
+      });
+
+      async function loadCSource() {
+        try {
+          const res = await fetch('/api/c-source');
+          if (res.ok) {
+            const code = await res.text();
+            cCodeDisplay.textContent = code;
+          }
+        } catch (err) {
+          cCodeDisplay.textContent = 'Failed to load C source file.';
+        }
+      }
+
+      btnCopyCCode.addEventListener('click', () => {
+        navigator.clipboard.writeText(cCodeDisplay.textContent || '');
+        btnCopyCCode.innerText = 'Copied!';
+        setTimeout(() => (btnCopyCCode.innerText = 'Copy C Code'), 2000);
+      });
+
+      btnRecompileC.addEventListener('click', async () => {
+        logToTerminal('$ gcc -O2 -Wall src/deadlock.c -o deadlock_sim');
+        try {
+          const res = await fetch('/api/recompile-c');
+          const data = await res.json();
+          if (data.success) {
+            logToTerminal('[GCC SUCCESS] ' + data.message);
+          } else {
+            logToTerminal('[GCC ERROR] ' + data.error, true);
+          }
+        } catch (err) {
+          logToTerminal('[GCC FAILED] ' + err.message, true);
+        }
+      });
+
+      // Initial load
+      runSimulation();
+      loadCSource();
+    </script>
+  </body>
+</html>
